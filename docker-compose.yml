@@ -1,0 +1,92 @@
+services:
+  # PHP Service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ${CONTAINER_APP}
+    restart: unless-stopped
+    working_dir: /var/www/laravel
+    volumes:
+      - ./laravel:/var/www/laravel
+      - ./php/local.ini:/usr/local/etc/php/conf.d/local.ini
+    networks:
+      - laravel-blade
+
+  # Nginx Service
+  nginx:
+    image: nginx:${NGINX_VERSION}
+    container_name: ${CONTAINER_NGINX}
+    restart: unless-stopped
+    ports:
+      - "${PORT_NGINX}:80"
+    volumes:
+      - ./laravel:/var/www/laravel
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - laravel-blade
+      - traefik
+    depends_on:
+      - app
+    labels:
+      - traefik.enable=${TRAEFIK_ENABLE}
+      - traefik.docker.network=${TRAEFIK_NETWORK}
+      - traefik.http.routers.laravel-blade.rule=Host(`${TRAEFIK_DOMAIN}`)
+      - traefik.http.routers.laravel-blade.entrypoints=${TRAEFIK_ENTRYPOINT}
+      - traefik.http.routers.laravel-blade.tls=true
+      - traefik.http.routers.laravel-blade.tls.certresolver=${TRAEFIK_CERTRESOLVER}
+      - traefik.http.services.laravel-blade.loadbalancer.server.port=80
+
+  # MySQL Service
+  db:
+    image: mysql:${MYSQL_VERSION}
+    container_name: ${CONTAINER_DB}
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_USER: ${MYSQL_USER}
+    volumes:
+      - dbdata:/var/lib/mysql
+    ports:
+      - "${PORT_MYSQL}:3306"
+    networks:
+      - laravel-blade
+
+  # Redis Service
+  redis:
+    image: redis:${REDIS_VERSION}
+    container_name: ${CONTAINER_REDIS}
+    restart: unless-stopped
+    ports:
+      - "${PORT_REDIS}:6379"
+    networks:
+      - laravel-blade
+
+  # phpMyAdmin Service
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: ${CONTAINER_PHPMYADMIN}
+    restart: unless-stopped
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "${PORT_PHPMYADMIN}:80"
+    networks:
+      - laravel-blade
+    depends_on:
+      - db
+
+networks:
+  laravel-blade:
+    driver: bridge
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK}
+
+volumes:
+  dbdata:
+    driver: local
